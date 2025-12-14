@@ -1,0 +1,20 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# PyCharm project files
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# CSVs or other data files you don't want in Git
+*.csv
