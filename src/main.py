@@ -17,12 +17,14 @@ def main(page: ft.Page):
     # Turkey inputs
     tid_input = ft.TextField(label="Turkey ID", width=100)
     weight_input = ft.TextField(label="Weight", width=100)
+    turkey_inputs = [tid_input, weight_input]
 
     # Order inputs
     oid_input = ft.TextField(label="Order ID", width=100)
     order_name_input = ft.TextField(label="Name", width=150)
     target_weight_input = ft.TextField(label="Target Weight", width=100)
     notes_input = ft.TextField(label="Notes", width=200)
+    order_inputs = [oid_input, order_name_input, target_weight_input, notes_input]
 
     # Ham portion radio group
     ham_radio_group = ft.RadioGroup(
@@ -123,6 +125,7 @@ def main(page: ft.Page):
         refresh_turkeys()
 
     # Add order
+
     def add_order(e):
         try:
             oid = int(oid_input.value)
@@ -130,6 +133,8 @@ def main(page: ft.Page):
             name = order_name_input.value
             notes = notes_input.value
             ham = ham_radio_group.value
+            order_inputs[0].focus()  # <--- HERE
+            page.update()  # refresh the page to apply focus
         except ValueError:
             print("Invalid order input!")
             return
@@ -137,7 +142,7 @@ def main(page: ft.Page):
         backend.add_order(oid, target_weight, name, ham, notes)
 
         # Clear inputs
-        oid_input.value = ""
+        oid_input.value = oid+1
         oid_input.update()
         target_weight_input.value = ""
         target_weight_input.update()
@@ -149,7 +154,6 @@ def main(page: ft.Page):
         ham_radio_group.update()
 
         refresh_orders()
-
 
     def unmatch_turkey(e):
         tid = selected_turkey
@@ -163,9 +167,21 @@ def main(page: ft.Page):
         refresh_turkeys()
         refresh_orders()
 
-
-
-
+    # enter functionality for turkeys and orders
+    for idx, field in enumerate(order_inputs):
+        if idx < len(order_inputs) - 1:
+            # move focus to next field
+            field.on_submit = lambda e, i=idx: order_inputs[i + 1].focus()
+        else:
+            # last field triggers add_order
+            field.on_submit = add_order
+    for idx, field in enumerate(turkey_inputs):
+        if idx < len(turkey_inputs) - 1:
+            # Move focus to next field
+            field.on_submit = lambda e, i=idx: turkey_inputs[i + 1].focus()
+        else:
+            # Last field triggers add_turkey
+            field.on_submit = add_turkey
     # Layout
     page.add(
         ft.Row([
