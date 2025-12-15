@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 class Backend:
 
     def __init__(self,csv=0):
@@ -46,7 +45,7 @@ class Backend:
             raise ValueError(f"turkey with tid={tid} already exists!")
         new_turkey = {
             "weight": weight,
-            "assinged": 0
+            "assigned": False
         }
         self.turkeys.loc[tid] = new_turkey
 
