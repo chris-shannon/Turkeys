@@ -1,5 +1,3 @@
-from readline import backend
-
 import flet as ft
 from backend import Backend
 
@@ -108,6 +106,15 @@ def main(page: ft.Page):
             print(ve)
         refresh_turkeys()
         refresh_orders()
+
+    def auto_match(_):
+        try:
+            backend.auto_match()
+        except ValueError as ve:
+            print(ve)
+
+        refresh_turkeys()
+        refresh_orders()
     # Add turkey
     def add_turkey(e):
         try:
@@ -210,10 +217,9 @@ def main(page: ft.Page):
                 order_lv,  # ListView for orders
                 ft.ElevatedButton("Delete Selected Order", on_click=delete_selected_order),  # delete button
                 ft.ElevatedButton("Unmatch Selected Order", on_click=unmatch_order),
-                ft.ElevatedButton("Match Selected Order & Turkey", on_click=match_selected)
+                ft.ElevatedButton("Match Selected Order & Turkey", on_click=match_selected),
+                ft.ElevatedButton("Automated Match", on_click=auto_match)
             ], expand=True),
         ], expand=True, spacing=20)
     )
-
-
 ft.app(target=main)

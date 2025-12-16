@@ -34,8 +34,8 @@ class Backend:
             "name": name,
             "ham": ham,
             "notes": notes,
-            "assigned_tid": 0,
-            "assigned_weight": 0
+            "assigned_tid": pd.NA,
+            "assigned_weight": pd.NA
         }
 
         self.orders.loc[oid] = new_order
@@ -59,7 +59,7 @@ class Backend:
         # Check if order exists and has no turkey yet
         if oid not in self.orders.index:
             raise ValueError(f"Order with oid={oid} does not exist!")
-        if self.orders.loc[oid, "assigned_tid"] != 0:
+        if pd.notna(self.orders.loc[oid, "assigned_tid"]):
             raise ValueError(f"Order with oid={oid} already has a turkey assigned!")
 
         #perform match
@@ -73,6 +73,61 @@ class Backend:
         self.turkeys.loc[tid, "assigned"] = True
 
         print(f"Order {oid} matched with Turkey {tid} successfully!")
+
+    def auto_match(self):
+        print("=== AUTO MATCH START (ORDER BUCKETS) ===")
+
+        BUCKET_SIZE = 2
+        START_WEIGHT = 8  # start at 8 lbs orders or less
+
+        # Only unassigned orders & turkeys
+        orders = self.orders[self.orders["assigned_tid"].isna()].copy()
+        turkeys = self.turkeys[~self.turkeys["assigned"]]
+
+        if orders.empty:
+            print("No unassigned orders.")
+            return
+        if turkeys.empty:
+            print("No unassigned turkeys.")
+            return
+
+        # Assign bucket to each order
+        def bucket_order(weight):
+            if weight <= START_WEIGHT:
+                return START_WEIGHT
+            return START_WEIGHT + ((weight - START_WEIGHT - 1) // BUCKET_SIZE + 1) * BUCKET_SIZE
+
+        orders["bucket"] = orders["target_weight"].apply(bucket_order)
+
+        # Process buckets in ascending order
+        for b in sorted(orders["bucket"].unique()):
+            print(f"\nProcessing bucket: {b} lbs orders")
+            bucket_orders = orders[orders["bucket"] == b].sort_index()  # OID priority
+
+            for oid, order in bucket_orders.iterrows():
+                print(f"  Order {oid} target {order['target_weight']} lbs")
+
+                if turkeys.empty:
+                    print("    No turkeys left to assign.")
+                    break
+
+                # Pick smallest turkey >= target weight
+                suitable = turkeys[turkeys["weight"] >= order["target_weight"]]
+                if not suitable.empty:
+                    tid = suitable["weight"].idxmin()
+                    print(f"    Matched with turkey {tid} ({suitable.loc[tid, 'weight']} lbs)")
+                else:
+                    # Fallback: largest remaining turkey
+                    tid = turkeys["weight"].idxmax()
+                    print(f"    No suitable turkey, using largest {tid} ({turkeys.loc[tid, 'weight']} lbs)")
+
+                # Call existing match function
+                self.match(oid, tid)
+
+                # Remove turkey from available pool
+                turkeys = turkeys.drop(tid)
+
+        print("\n=== AUTO MATCH END ===")
 
     def remove_match_by_oid(self, oid):
         # Check if order exists
@@ -156,18 +211,3 @@ class Backend:
         print(self.orders, "\n")
         print("Turkeys:")
         print(self.turkeys, "\n")
-
-
-
-backend = Backend()
-
-backend.add_order(1, 5.5, "Turkey Order 1", "No", "Healthy")
-backend.add_order(2, 6.0, "Turkey Order 2", "Yes", "Urgent")
-
-backend.add_turkey(101, 5.2)
-backend.add_turkey(102, 6.0)
-
-backend.print_tables()
-
-
-
