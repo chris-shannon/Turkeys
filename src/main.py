@@ -1,225 +1,218 @@
 import flet as ft
+import pandas as pd
 from backend import Backend
-
-
-def add_test_turkeys(backend):
-    backend.add_turkey(1, 18)
-    backend.add_turkey(2, 15)
-    backend.add_turkey(3, 17)
-    backend.add_turkey(4, 13)
-    backend.add_turkey(5, 19)
+from turkey_manager import TurkeyManager
 
 def main(page: ft.Page):
     backend = Backend()
+    turkey_manager = TurkeyManager(backend, lambda: refresh_ui())
 
-    # Turkey inputs
-    tid_input = ft.TextField(label="Turkey ID", width=100)
-    weight_input = ft.TextField(label="Weight", width=100)
-    turkey_inputs = [tid_input, weight_input]
+    # --- Sort state ---
+    turkey_sort_col = "tid"
+    turkey_sort_asc = True
+    order_sort_col = "oid"
+    order_sort_asc = True
 
-    # Order inputs
-    oid_input = ft.TextField(label="Order ID", width=100)
-    order_name_input = ft.TextField(label="Name", width=150)
-    target_weight_input = ft.TextField(label="Target Weight", width=100)
-    notes_input = ft.TextField(label="Notes", width=200)
-    order_inputs = [oid_input, order_name_input, target_weight_input, notes_input]
+    # --- Header arrows helper ---
+    def arrow(col, current_col, asc):
+        if col == current_col:
+            return "↑" if asc else "↓"
+        return ""
 
-    # Ham portion radio group
-    ham_radio_group = ft.RadioGroup(
-        content=ft.Row([
-            ft.Radio(value="None", label="None"),
-            ft.Radio(value="Whole", label="Whole"),
-            ft.Radio(value="1/2", label="1/2"),
-            ft.Radio(value="1/4", label="1/4"),
-        ]),
-        value="None"
+    # --- DataTables ---
+    turkey_table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text(f"TID {arrow('tid', turkey_sort_col, turkey_sort_asc)}"), on_sort=lambda e: sort_turkeys("tid")),
+            ft.DataColumn(ft.Text(f"Weight {arrow('weight', turkey_sort_col, turkey_sort_asc)}"), on_sort=lambda e: sort_turkeys("weight")),
+            ft.DataColumn(ft.Text("Assigned")),
+        ],
+        rows=[]
     )
-    selected_turkey = None
-    selected_order = None
 
-    # ListViews
-    turkey_lv = ft.ListView(expand=True, spacing=5, padding=10)
-    order_lv = ft.ListView(expand=True, spacing=5, padding=10)
+    order_table = ft.DataTable(
+        columns=[
+            ft.DataColumn(ft.Text(f"OID {arrow('oid', order_sort_col, order_sort_asc)}"), on_sort=lambda e: sort_orders("oid")),
+            ft.DataColumn(ft.Text(f"Name {arrow('name', order_sort_col, order_sort_asc)}"), on_sort=lambda e: sort_orders("name")),
+            ft.DataColumn(ft.Text(f"Target {arrow('target_weight', order_sort_col, order_sort_asc)}"), on_sort=lambda e: sort_orders("target_weight")),
+            ft.DataColumn(ft.Text("Ham")),
+            ft.DataColumn(ft.Text("Matched")),
+            ft.DataColumn(ft.Text("Weight")),
+            ft.DataColumn(ft.Text("Notes")),
+        ],
+        rows=[]
+    )
 
-    # Refresh turkeys
-    def refresh_turkeys():
-        turkey_lv.controls.clear()
-        for tid, turkey in backend.turkeys.to_dict("index").items():
-            turkey_lv.controls.append(
-                ft.ListTile(
-                    title=ft.Text(f"TID: {tid}, Weight: {turkey['weight']}"),
-                    data=tid,
-                    selected=(tid == selected_turkey),  # highlight if selected
-                    on_click=lambda e, tid=tid: select_turkey(tid)
+    # --- Sort functions ---
+    def sort_turkeys(col):
+        nonlocal turkey_sort_col, turkey_sort_asc
+        if turkey_sort_col == col:
+            turkey_sort_asc = not turkey_sort_asc
+        else:
+            turkey_sort_col = col
+            turkey_sort_asc = True
+        refresh_ui()
+
+    def sort_orders(col):
+        nonlocal order_sort_col, order_sort_asc
+        if order_sort_col == col:
+            order_sort_asc = not order_sort_asc
+        else:
+            order_sort_col = col
+            order_sort_asc = True
+        refresh_ui()
+
+    # --- Refresh function ---
+    def refresh_ui():
+        nonlocal turkey_table, order_table
+
+        # --- Update turkey table ---
+        df_turkeys = turkey_manager.get_sorted_turkeys().sort_values(
+            turkey_sort_col, ascending=turkey_sort_asc
+        )
+        turkey_table.rows.clear()
+        for tid, t in df_turkeys.to_dict("index").items():
+            assigned_text = "Yes" if t["assigned"] else "No"
+            assigned_color = ft.Colors.GREEN if t["assigned"] else ft.Colors.RED
+            turkey_table.rows.append(
+                ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(str(tid))),
+                        ft.DataCell(ft.Text(str(t["weight"]))),
+                        ft.DataCell(ft.Text(assigned_text, color=assigned_color)),
+                    ],
+                    selected=(tid == turkey_manager.selected_turkey),
+                    on_select_changed=lambda e, tid=tid: turkey_manager.select_turkey(tid),
                 )
             )
-        turkey_lv.update()
 
-    # Refresh orders
-    def refresh_orders():
-        order_lv.controls.clear()
-        for oid, order in backend.orders.to_dict("index").items():
-            order_lv.controls.append(
-                ft.ListTile(
-                    title=ft.Text(f"OID: {oid}, Name: {order['name']}, Ham: {order['ham']}, Assigned Turkey: {order['assigned_weight']}"),
-                    subtitle=ft.Text(f"Notes: {order['notes']}"),
-                    data=oid,
-                    selected=(oid == selected_order),  # highlight if selected
-                    on_click=lambda e, oid=oid: select_order(oid)
+        # Rebuild columns with updated arrows
+        turkey_table.columns = [
+            ft.DataColumn(
+                ft.Text(f"TID {arrow('tid', turkey_sort_col, turkey_sort_asc)}"),
+                on_sort=lambda e: sort_turkeys("tid")
+            ),
+            ft.DataColumn(
+                ft.Text(f"Weight {arrow('weight', turkey_sort_col, turkey_sort_asc)}"),
+                on_sort=lambda e: sort_turkeys("weight")
+            ),
+            ft.DataColumn(ft.Text("Assigned")),
+        ]
+        turkey_table.update()
+
+        # --- Update order table ---
+        df_orders = turkey_manager.get_sorted_orders().sort_values(
+            order_sort_col, ascending=order_sort_asc
+        )
+        order_table.rows.clear()
+        for oid, o in df_orders.to_dict("index").items():
+            assigned_tid = str(o["assigned_tid"]) if pd.notna(o["assigned_tid"]) else "No"
+            assigned_tid_color = ft.Colors.GREEN if pd.notna(o["assigned_tid"]) else ft.Colors.RED
+
+            assigned_weight = str(o["assigned_weight"]) if pd.notna(o["assigned_weight"]) else "No"
+            assigned_weight_color = ft.Colors.GREEN if pd.notna(o["assigned_weight"]) else ft.Colors.RED
+
+            order_table.rows.append(
+                ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(str(oid))),
+                        ft.DataCell(ft.Text(o["name"])),
+                        ft.DataCell(ft.Text(str(o["target_weight"]))),
+                        ft.DataCell(ft.Text(o["ham"])),
+                        ft.DataCell(ft.Text(assigned_tid, color=assigned_tid_color)),
+                        ft.DataCell(ft.Text(assigned_weight, color=assigned_weight_color)),
+                        ft.DataCell(ft.Text(o["notes"])),
+                    ],
+                    selected=(oid == turkey_manager.selected_order),
+                    on_select_changed=lambda e, oid=oid: turkey_manager.select_order(oid),
                 )
             )
-        order_lv.update()
 
-    def select_turkey(tid):
-        nonlocal selected_turkey
-        selected_turkey = tid
-        refresh_turkeys()
+        # Rebuild order table headers with arrows
+        order_table.columns = [
+            ft.DataColumn(
+                ft.Text(f"OID {arrow('oid', order_sort_col, order_sort_asc)}"),
+                on_sort=lambda e: sort_orders("oid")
+            ),
+            ft.DataColumn(
+                ft.Text(f"Name {arrow('name', order_sort_col, order_sort_asc)}"),
+                on_sort=lambda e: sort_orders("name")
+            ),
+            ft.DataColumn(
+                ft.Text(f"Target {arrow('target_weight', order_sort_col, order_sort_asc)}"),
+                on_sort=lambda e: sort_orders("target_weight")
+            ),
+            ft.DataColumn(ft.Text("Ham")),
+            ft.DataColumn(ft.Text("Matched")),
+            ft.DataColumn(ft.Text("Weight")),
+            ft.DataColumn(ft.Text("Notes")),
+        ]
+        order_table.update()
 
-    def select_order(oid):
-        nonlocal selected_order
-        selected_order = oid
-        refresh_orders()
-
-    def delete_selected_turkey(e):
-        nonlocal selected_turkey
-        if selected_turkey is not None:
-            backend.remove_turkey(selected_turkey)
-            selected_turkey = None
-            refresh_turkeys()
-            refresh_orders()
-
-    def delete_selected_order(e):
-        nonlocal selected_order
-        if selected_order is not None:
-            backend.remove_order(selected_order)
-            selected_order = None
-            refresh_orders()
-            refresh_turkeys()
-
-    def match_selected(e):
-        if selected_order is None or selected_turkey is None:
-            print("Select both an order and a turkey to match!")
-            return
-        try:
-            backend.match(selected_order, selected_turkey)
-        except ValueError as ve:
-            print(ve)
-        refresh_turkeys()
-        refresh_orders()
-
-    def auto_match(_):
-        try:
-            backend.auto_match()
-        except ValueError as ve:
-            print(ve)
-
-        refresh_turkeys()
-        refresh_orders()
-    # Add turkey
-    def add_turkey(e):
-        try:
-            tid = int(tid_input.value)
-            weight = float(weight_input.value)
-        except ValueError:
-            print("Invalid turkey input!")
-            return
-        backend.add_turkey(tid, weight)
-        tid_input.value = tid+1
-        tid_input.update()
-        weight_input.value = ""
-        weight_input.focus()
-        weight_input.update()
-        refresh_turkeys()
-
-    # Add order
-
-    def add_order(e):
-        try:
-            oid = int(oid_input.value)
-            target_weight = float(target_weight_input.value)
-            name = order_name_input.value
-            notes = notes_input.value
-            ham = ham_radio_group.value
-            order_inputs[0].focus()  # <--- HERE
-            page.update()  # refresh the page to apply focus
-        except ValueError:
-            print("Invalid order input!")
-            return
-
-        backend.add_order(oid, target_weight, name, ham, notes)
-
-        # Clear inputs
-        oid_input.value = oid+1
-        oid_input.update()
-        target_weight_input.value = ""
-        target_weight_input.update()
-        order_name_input.value = ""
-        order_name_input.update()
-        notes_input.value = ""
-        notes_input.update()
-        ham_radio_group.value = "None"
-        ham_radio_group.update()
-
-        refresh_orders()
-
-    def unmatch_turkey(e):
-        tid = selected_turkey
-        backend.remove_match_by_tid(tid)
-        refresh_turkeys()
-        refresh_orders()
-
-    def unmatch_order(e):
-        oid = selected_order
-        backend.remove_match_by_tid(oid)
-        refresh_turkeys()
-        refresh_orders()
-
-    # enter functionality for turkeys and orders
-    for idx, field in enumerate(order_inputs):
-        if idx < len(order_inputs) - 1:
-            # move focus to next field
-            field.on_submit = lambda e, i=idx: order_inputs[i + 1].focus()
-        else:
-            # last field triggers add_order
-            field.on_submit = add_order
-    for idx, field in enumerate(turkey_inputs):
-        if idx < len(turkey_inputs) - 1:
-            # Move focus to next field
-            field.on_submit = lambda e, i=idx: turkey_inputs[i + 1].focus()
-        else:
-            # Last field triggers add_turkey
-            field.on_submit = add_turkey
-    # Layout
+    # --- Layout ---
     page.add(
-        ft.Row([
-            # Turkeys column
-            ft.Column([
-                ft.Row([
-                    tid_input,
-                    weight_input,
-                    ft.ElevatedButton("Add Turkey", on_click=add_turkey)
-                ]),
-                turkey_lv,  # ListView for turkeys
-                ft.ElevatedButton("Delete Selected Turkey", on_click=delete_selected_turkey),# delete button
-                ft.ElevatedButton("Unmatch Selected Turkey", on_click=unmatch_turkey)
-            ], expand=True),
-
-            # Orders column
-            ft.Column([
-                ft.Row([
-                    oid_input,
-                    order_name_input,
-                    target_weight_input,
-                    ft.ElevatedButton("Add Order", on_click=add_order)
-                ]),
-                ft.Row([ham_radio_group]),
-                notes_input,
-                order_lv,  # ListView for orders
-                ft.ElevatedButton("Delete Selected Order", on_click=delete_selected_order),  # delete button
-                ft.ElevatedButton("Unmatch Selected Order", on_click=unmatch_order),
-                ft.ElevatedButton("Match Selected Order & Turkey", on_click=match_selected),
-                ft.ElevatedButton("Automated Match", on_click=auto_match)
-            ], expand=True),
-        ], expand=True, spacing=20)
+        ft.Row(
+            [
+                ft.Column(
+                    [
+                        ft.Row([turkey_manager.tid_input, turkey_manager.weight_input], spacing=10,alignment=ft.MainAxisAlignment.CENTER,),
+                        ft.Row([turkey_manager.add_turkey_btn, turkey_manager.delete_turkey_btn], spacing=10,alignment=ft.MainAxisAlignment.CENTER,),
+                        ft.Container(
+                            content=ft.Column([turkey_table], expand=True, scroll=ft.ScrollMode.AUTO),
+                            expand=True,
+                            padding=5,
+                        ),
+                    ],
+                    expand=False,
+                    spacing=10,
+                    alignment=ft.MainAxisAlignment.START,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Column(
+                    [
+                        turkey_manager.auto_match_btn,
+                        turkey_manager.match_btn,
+                        turkey_manager.unmatch_turkey_btn,
+                        turkey_manager.unmatch_order_btn,
+                        turkey_manager.make_pdfs_btn,
+                    ],
+                    expand=False,
+                    spacing=10,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Column(
+                    [
+                        ft.Row([turkey_manager.oid_input, turkey_manager.order_name_input,turkey_manager.target_weight_input], spacing=10,alignment=ft.MainAxisAlignment.CENTER,),
+                        ft.Row([turkey_manager.notes_input, turkey_manager.ham_radio_group], spacing=10,alignment=ft.MainAxisAlignment.CENTER,),
+                        ft.Row([turkey_manager.add_order_btn, turkey_manager.delete_order_btn], spacing=10,alignment=ft.MainAxisAlignment.CENTER,),
+                        ft.Container(
+                            content=ft.Column([order_table], expand=True, scroll=ft.ScrollMode.AUTO),
+                            expand=True,
+                            padding=5,
+                        ),
+                    ],
+                    expand=True,
+                    spacing=10,
+                    alignment=ft.MainAxisAlignment.START,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+            ],
+            expand=True,
+            spacing=20,
+        ),
     )
+
+    refresh_ui()
+
 ft.app(target=main)
+
+
+
+
+
+
+
+
+
+
+

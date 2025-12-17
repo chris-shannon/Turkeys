@@ -1,4 +1,5 @@
 import pandas as pd
+from fpdf import FPDF
 
 class Backend:
 
@@ -10,12 +11,12 @@ class Backend:
             #create empty turkeys table
             self.orders = pd.DataFrame({
                 "oid": pd.Series(dtype="int"),
-                "target_weight": pd.Series(dtype="float"),
                 "name": pd.Series(dtype="string"),
+                "assigned_tid": pd.Series(dtype="int"),
+                "assigned_weight": pd.Series(dtype="float"),
+                "target_weight": pd.Series(dtype="float"),
                 "ham": pd.Series(dtype="string"),
                 "notes": pd.Series(dtype="string"),
-                "assigned_tid": pd.Series(dtype="int"),
-                "assigned_weight": pd.Series(dtype="float")
             }).set_index("oid")
             # create empty orders
             self.turkeys = pd.DataFrame({
@@ -23,8 +24,6 @@ class Backend:
                 "weight": pd.Series(dtype="float"),
                 "assigned": pd.Series(dtype="bool")
             }).set_index("tid")
-
-            return
 
     def add_order(self, oid, target_weight, name, ham, notes):
         if oid in self.orders.index:
@@ -75,14 +74,11 @@ class Backend:
         print(f"Order {oid} matched with Turkey {tid} successfully!")
 
     def auto_match(self):
-        print("=== AUTO MATCH START (ORDER BUCKETS) ===")
-
-        BUCKET_SIZE = 2
-        START_WEIGHT = 8  # start at 8 lbs orders or less
+        print("=== AUTO MATCH START ===")
 
         # Only unassigned orders & turkeys
-        orders = self.orders[self.orders["assigned_tid"].isna()].copy()
-        turkeys = self.turkeys[~self.turkeys["assigned"]]
+        orders = self.orders[self.orders["assigned_tid"].isna() & (self.orders["target_weight"] != 0)].copy()
+        turkeys = self.turkeys[~self.turkeys["assigned"]].copy()
 
         if orders.empty:
             print("No unassigned orders.")
@@ -91,43 +87,31 @@ class Backend:
             print("No unassigned turkeys.")
             return
 
-        # Assign bucket to each order
-        def bucket_order(weight):
-            if weight <= START_WEIGHT:
-                return START_WEIGHT
-            return START_WEIGHT + ((weight - START_WEIGHT - 1) // BUCKET_SIZE + 1) * BUCKET_SIZE
+        # Sort orders by target_weight (or OID if you prefer)
+        orders = orders.sort_values(by=["target_weight", "oid"])  # optional OID secondary sort
 
-        orders["bucket"] = orders["target_weight"].apply(bucket_order)
+        # Sort turkeys by weight
+        turkeys = turkeys.sort_values(by="weight")
 
-        # Process buckets in ascending order
-        for b in sorted(orders["bucket"].unique()):
-            print(f"\nProcessing bucket: {b} lbs orders")
-            bucket_orders = orders[orders["bucket"] == b].sort_index()  # OID priority
+        for oid, order in orders.iterrows():
+            if turkeys.empty:
+                print("No turkeys left to assign.")
+                break
 
-            for oid, order in bucket_orders.iterrows():
-                print(f"  Order {oid} target {order['target_weight']} lbs")
+            # Find turkey with closest weight
+            diffs = (turkeys["weight"] - order["target_weight"]).abs()
+            tid = diffs.idxmin()
+            turkey_weight = turkeys.loc[tid, "weight"]
 
-                if turkeys.empty:
-                    print("    No turkeys left to assign.")
-                    break
+            print(f"Assigning Order {oid} ({order['target_weight']} lbs) → Turkey {tid} ({turkey_weight} lbs)")
 
-                # Pick smallest turkey >= target weight
-                suitable = turkeys[turkeys["weight"] >= order["target_weight"]]
-                if not suitable.empty:
-                    tid = suitable["weight"].idxmin()
-                    print(f"    Matched with turkey {tid} ({suitable.loc[tid, 'weight']} lbs)")
-                else:
-                    # Fallback: largest remaining turkey
-                    tid = turkeys["weight"].idxmax()
-                    print(f"    No suitable turkey, using largest {tid} ({turkeys.loc[tid, 'weight']} lbs)")
+            # Match them
+            self.match(oid, tid)
 
-                # Call existing match function
-                self.match(oid, tid)
+            # Remove assigned turkey
+            turkeys = turkeys.drop(tid)
 
-                # Remove turkey from available pool
-                turkeys = turkeys.drop(tid)
-
-        print("\n=== AUTO MATCH END ===")
+        print("=== AUTO MATCH END ===")
 
     def remove_match_by_oid(self, oid):
         # Check if order exists
@@ -141,9 +125,8 @@ class Backend:
 
         # ---------- Perform remove ----------
         # 1. Remove turkey assignment from the order
-        self.orders.loc[oid, "assigned_tid"] = 0
-        self.orders.loc[oid, "assigned_weight"] = 0.0
-
+        self.orders.loc[oid, "assigned_tid"] = pd.NA
+        self.orders.loc[oid, "assigned_weight"] = pd.NA
         # 2. Mark turkey as unassigned
         self.turkeys.loc[assigned_tid, "assigned"] = False
 
@@ -167,8 +150,8 @@ class Backend:
         oid = orders_with_tid.index[0]
 
         # ---------- Perform remove ----------
-        self.orders.loc[oid, "assigned_tid"] = 0
-        self.orders.loc[oid, "assigned_weight"] = 0.0
+        self.orders.loc[oid, "assigned_tid"] = pd.NA
+        self.orders.loc[oid, "assigned_weight"] = pd.NA
         self.turkeys.loc[tid, "assigned"] = False
 
         print(f"Match removed: Turkey {tid} is no longer assigned to Order {oid}.")
@@ -178,10 +161,11 @@ class Backend:
         if oid not in self.orders.index:
             raise ValueError(f"Order with oid={oid} does not exist!")
 
-        # If the order has a turkey assigned, remove the match
         assigned_tid = self.orders.loc[oid, "assigned_tid"]
-        if assigned_tid != 0:
-            self.remove_match_by_oid(oid)  # this will unassign the turkey
+
+        # Only unassign if a turkey is actually assigned
+        if pd.notna(assigned_tid):
+            self.remove_match_by_oid(oid)
 
         # Now safe to remove the order
         self.orders.drop(oid, inplace=True)
@@ -191,7 +175,6 @@ class Backend:
         # Check if turkey exists
         if tid not in self.turkeys.index:
             raise ValueError(f"Turkey with tid={tid} does not exist!")
-
         # Check if turkey is assigned
         if self.turkeys.loc[tid, "assigned"]:
             self.remove_match_by_tid(tid)
@@ -205,6 +188,144 @@ class Backend:
 
     def list_turkeys(self):
         return self.turkeys.reset_index().to_dict(orient="records")
+
+    def export_turkey_orders_pdf(self, filename: str = "orders_turkey_report.pdf"):
+        """
+        Creates a PDF from the orders DataFrame and saves it, excluding orders with target_weight = 0.
+
+        Args:
+            filename (str): The filename for the saved PDF.
+        """
+        # Filter out orders with target_weight == 0
+        df = self.orders[self.orders["target_weight"] != 0].sort_values(by='name')
+
+        if df.empty:
+            print("No orders with target weight > 0 to export.")
+            return
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+
+        # Add a title
+        pdf.cell(200, 10, txt="Orders Report", ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+        col_width = pdf.w / 6  # 6 columns
+        row_height = pdf.font_size * 1.5
+
+        headers = ["Name", "Turkey #", "Assigned lbs", "Target lbs", "Ham", "Notes"]
+
+        # Add table header using custom names
+        for header in headers:
+            pdf.cell(col_width, row_height, txt=header, border=1, align="C")
+        pdf.ln(row_height)
+
+        # Add table rows
+        for _, row in df.iterrows():
+            row_values = [
+                row["name"],
+                row["assigned_tid"] if pd.notna(row["assigned_tid"]) else "",
+                row["assigned_weight"] if pd.notna(row["assigned_weight"]) else "",
+                row["target_weight"],
+                row["ham"],
+                row["notes"],
+            ]
+            for item in row_values:
+                pdf.cell(col_width, row_height, txt=str(item), border=1, align="C")
+            pdf.ln(row_height)
+
+        # Save PDF
+        pdf.output(filename)
+        print(f"PDF saved as '{filename}'")
+
+    def export_free_turkeys_pdf(self, filename: str = "free_turkeys.pdf"):
+        """
+        Creates a PDF listing only unassigned turkeys.
+        Columns: Name, Turkey #, Assigned lbs, Target lbs, Ham, Notes
+        Only Turkey # and Assigned lbs are filled; others are blank.
+        """
+        df = self.turkeys[self.turkeys["assigned"] == False].sort_values(by='weight')  # get unassigned turkeys
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+
+        # Title
+        pdf.cell(200, 10, txt="Free Turkeys Report", ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+
+        headers = ["Name", "Turkey #", "Assigned lbs", "Target lbs", "Ham", "Notes"]
+        col_width = pdf.w / len(headers)  # divide page width evenly
+        row_height = pdf.font_size * 1.5
+
+        # Table header
+        for header in headers:
+            pdf.cell(col_width, row_height, txt=header, border=1, align="C")
+        pdf.ln(row_height)
+
+        # Table rows
+        for tid, turkey in df.to_dict("index").items():
+            row_data = ["", tid, turkey["weight"], "", "", ""]  # only Turkey # and Assigned lbs filled
+            for item in row_data:
+                pdf.cell(col_width, row_height, txt=str(item), border=1, align="C")
+            pdf.ln(row_height)
+
+        pdf.output(filename)
+        print(f"PDF saved as '{filename}'")
+
+    def export_ham_orders_without_turkey(self, filename: str = "ham_orders_report.pdf"):
+        """
+        Creates a PDF from orders that have ham and no assigned turkey.
+
+        Args:
+            filename (str): The filename for the saved PDF.
+        """
+        # Filter orders: ham is not 'None' and assigned_tid is NaN
+        df = self.orders[
+            (self.orders["ham"] != "None") & (self.orders["assigned_tid"].isna())
+            ].sort_values(by="name")
+
+        if df.empty:
+            print("No ham orders without assigned turkeys.")
+            return
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+
+        # Add a title
+        pdf.cell(200, 10, txt="Ham Orders Without Assigned Turkeys", ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+        col_width = pdf.w / 4  # three columns + some extra space
+        row_height = pdf.font_size * 1.5
+
+        headers = ["Name", "Ham", "Notes"]
+
+        # Table header
+        for header in headers:
+            pdf.cell(col_width, row_height, txt=header, border=1, align="C")
+        pdf.ln(row_height)
+
+        # Table rows
+        for _, row in df.iterrows():
+            row_values = [
+                row["name"],
+                row["ham"],
+                row["notes"],
+            ]
+            for item in row_values:
+                pdf.cell(col_width, row_height, txt=str(item), border=1, align="C")
+            pdf.ln(row_height)
+
+        # Save PDF
+        pdf.output(filename)
+        print(f"PDF saved as '{filename}'")
 
     def print_tables(self):
         print("Orders:")
