@@ -18,7 +18,8 @@
   The uneven distribution of turkey weights vs order targets is what makes the matching problem non-trivial.                                                                                                                                                                 
    
   ![Turkey vs Order Distribution](./assets/smoothed_distribution.png)                                                                                                                                                                                                        
-                       
+   The progression of the sorting algorithm went in these 3 stages
+   
   1. **Greedy by order ID** — each order is matched in order of its ID to the closest available turkey. This worked poorly with real data: early orders matched well, but by the time later orders were processed most turkeys were taken, leaving some orders with a turkey 
   5+ pounds off.
                                                                                                                                                                                                                                                                              
@@ -36,9 +37,10 @@
   4. `flet run src/main.py`
 
   ## Screenshots
-
-    ![App Screenshot](./assets/appscreenshot.png)                                                                                                                                                                                                                       
-  <img src="./assets/pdf.png" width="400">  
+<p>
+    <img src="./assets/appscreenshot.png" width="800">
+    <img src="./assets/pdf.png" width="400">                                                                                                                                                                                                                                 
+  </p> 
 
 
 
