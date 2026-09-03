@@ -6,12 +6,16 @@
 
   ## Features
 
-  - Add orders with ideal turkey weight
-  - Add turkeys by ID and weight
+  - Add Orders with fields orderID, target weight, customer name
+  - Add Turkeys by ID and weight
   - Remove orders or turkeys if a mistake was made on entry                                                                                                                                                                                                                  
   - Auto-match orders to turkeys prioritizing the least total displacement while ensuring every order stays within an acceptable weight range
-  - Export matched data to a printable PDF                                                                                                                                                                                                                                   
-  - Save and load sessions from the data folder                                                                                                                                                                                                                              
+  - Export matched data to a printable PDF                                                                                                                                                                                                                              
+  - Save and load sessions from the data folder
+                                   
+   ![App Screenshot](./assets/appscreenshot.png) 
+   
+   ![PDF](./assets/pdf.png)
    
   ## Matching Algorithms                                                                                                                                                                                                                                                     
                        
