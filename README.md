@@ -11,10 +11,7 @@
   - Remove orders or turkeys if a mistake was made on entry                                                                                                                                                                                                                  
   - Auto-match orders to turkeys prioritizing the least total displacement while ensuring every order stays within an acceptable weight range
   - Export matched data to a printable PDF                                                                                                                                                                                                                              
-  - Save and load sessions from the data folder
-                                   
-   <img src="./assets/appscreenshot.png" width="500">                                                                                                                                                                                                                         
-  <img src="./assets/pdf.png" width="400">    
+  - Save and load sessions from the data folder  
    
   ## Matching Algorithms                                                                                                                                                                                                                                                     
                        
@@ -37,6 +34,11 @@
   2. `cd Turkeys` 
   3. `pip install flet==0.28.3 pandas scipy matplotlib fpdf`
   4. `flet run src/main.py`
+
+  ## Screenshots
+
+    ![App Screenshot](./assets/appscreenshot.png)                                                                                                                                                                                                                       
+  <img src="./assets/pdf.png" width="400">  
 
 
 
