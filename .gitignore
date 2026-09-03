@@ -163,7 +163,16 @@ cython_debug/
 storage/
 .idea/
 
-# runtime data - never commit
-*.pkl
+# macOS
+.DS_Store
+
+# Generated runtime files
+src/*.pdf
+src/*.pkl
+src/*.png
+src/assets/smoothed_distribution.png
+src/assets/turkey_order_distribution.png
+
+# Original data files with real names
 orders and turkeys *
 turkeys christmas *
