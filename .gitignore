@@ -161,3 +161,9 @@ cython_debug/
 
 # Flet
 storage/
+.idea/
+
+# runtime data - never commit
+*.pkl
+orders and turkeys *
+turkeys christmas *

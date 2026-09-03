@@ -4,6 +4,8 @@ from backend import Backend
 from turkey_manager import TurkeyManager
 
 def main(page: ft.Page):
+    page.title = "Turkey Manager"
+    page.window_icon = "icon.png"
     backend = Backend()
     turkey_manager = TurkeyManager(backend, lambda: refresh_ui())
 
@@ -38,6 +40,7 @@ def main(page: ft.Page):
             ft.DataColumn(ft.Text("Matched")),
             ft.DataColumn(ft.Text("Weight")),
             ft.DataColumn(ft.Text("Notes")),
+
         ],
         rows=[]
     )
@@ -65,14 +68,25 @@ def main(page: ft.Page):
     def refresh_ui():
         nonlocal turkey_table, order_table
 
+        # --- Update average displacement text field ---
+        turkey_manager.update_avg_displacement()  # <-- this updates self.avg_disp_field.value
+
         # --- Update turkey table ---
         df_turkeys = turkey_manager.get_sorted_turkeys().sort_values(
             turkey_sort_col, ascending=turkey_sort_asc
         )
+
         turkey_table.rows.clear()
         for tid, t in df_turkeys.to_dict("index").items():
-            assigned_text = "Yes" if t["assigned"] else "No"
-            assigned_color = ft.Colors.GREEN if t["assigned"] else ft.Colors.RED
+            if t["assigned"]:
+                assigned_order = turkey_manager.get_sorted_orders()[
+                    turkey_manager.get_sorted_orders()["assigned_tid"] == tid]
+                assigned_text = assigned_order.iloc[0]["name"] if not assigned_order.empty else "Yes"
+                assigned_color = ft.Colors.GREEN
+            else:
+                assigned_text = "No"
+                assigned_color = ft.Colors.RED
+
             turkey_table.rows.append(
                 ft.DataRow(
                     cells=[
@@ -85,7 +99,6 @@ def main(page: ft.Page):
                 )
             )
 
-        # Rebuild columns with updated arrows
         turkey_table.columns = [
             ft.DataColumn(
                 ft.Text(f"TID {arrow('tid', turkey_sort_col, turkey_sort_asc)}"),
@@ -103,6 +116,7 @@ def main(page: ft.Page):
         df_orders = turkey_manager.get_sorted_orders().sort_values(
             order_sort_col, ascending=order_sort_asc
         )
+
         order_table.rows.clear()
         for oid, o in df_orders.to_dict("index").items():
             assigned_tid = str(o["assigned_tid"]) if pd.notna(o["assigned_tid"]) else "No"
@@ -110,6 +124,19 @@ def main(page: ft.Page):
 
             assigned_weight = str(o["assigned_weight"]) if pd.notna(o["assigned_weight"]) else "No"
             assigned_weight_color = ft.Colors.GREEN if pd.notna(o["assigned_weight"]) else ft.Colors.RED
+
+            if pd.notna(o["displacement"]):
+                disp = o["displacement"]
+                disp_text = f"{disp:+.1f}"
+                if abs(disp) <= 0.5:
+                    disp_color = ft.Colors.GREEN
+                elif abs(disp) <= 1.0:
+                    disp_color = ft.Colors.YELLOW
+                else:
+                    disp_color = ft.Colors.RED
+            else:
+                disp_text = "—"
+                disp_color = ft.Colors.GREY
 
             order_table.rows.append(
                 ft.DataRow(
@@ -120,6 +147,7 @@ def main(page: ft.Page):
                         ft.DataCell(ft.Text(o["ham"])),
                         ft.DataCell(ft.Text(assigned_tid, color=assigned_tid_color)),
                         ft.DataCell(ft.Text(assigned_weight, color=assigned_weight_color)),
+                        ft.DataCell(ft.Text(disp_text, color=disp_color)),
                         ft.DataCell(ft.Text(o["notes"])),
                     ],
                     selected=(oid == turkey_manager.selected_order),
@@ -127,7 +155,6 @@ def main(page: ft.Page):
                 )
             )
 
-        # Rebuild order table headers with arrows
         order_table.columns = [
             ft.DataColumn(
                 ft.Text(f"OID {arrow('oid', order_sort_col, order_sort_asc)}"),
@@ -144,11 +171,14 @@ def main(page: ft.Page):
             ft.DataColumn(ft.Text("Ham")),
             ft.DataColumn(ft.Text("Matched")),
             ft.DataColumn(ft.Text("Weight")),
+            ft.DataColumn(
+                ft.Text(f"Displacement {arrow('displacement', order_sort_col, order_sort_asc)}"),
+                on_sort=lambda e: sort_orders("displacement")
+            ),
             ft.DataColumn(ft.Text("Notes")),
         ]
         order_table.update()
 
-    # --- Layout ---
     page.add(
         ft.Row(
             [
@@ -169,11 +199,18 @@ def main(page: ft.Page):
                 ),
                 ft.Column(
                     [
-                        turkey_manager.auto_match_btn,
                         turkey_manager.match_btn,
+                        turkey_manager.match_closest_btn,
+                        turkey_manager.auto_match_btn,
+                        turkey_manager.tune_orders_btn,
+                        ft.Container(height=20),
                         turkey_manager.unmatch_turkey_btn,
                         turkey_manager.unmatch_order_btn,
+                        ft.Container(height=40),
                         turkey_manager.make_pdfs_btn,
+                        turkey_manager.save_btn,
+                        turkey_manager.recall_save_btn,
+                        turkey_manager.avg_disp_field,
                     ],
                     expand=False,
                     spacing=10,
@@ -201,9 +238,7 @@ def main(page: ft.Page):
             spacing=20,
         ),
     )
-
     refresh_ui()
-
 ft.app(target=main)
 
 

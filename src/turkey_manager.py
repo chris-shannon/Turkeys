@@ -1,5 +1,3 @@
-from readline import backend
-
 import flet as ft
 import pandas as pd
 from backend import Backend  # your backend logic
@@ -9,11 +7,11 @@ class TurkeyManager:
         self.backend = backend
         self.refresh = refresh_cb
 
-        # Selected items
+        # --- Selected items ---
         self.selected_turkey = None
         self.selected_order = None
 
-        # Sorting
+        # --- Sorting modes ---
         self.turkey_sort_modes = [
             "tid_asc", "tid_desc", "weight_asc", "weight_desc",
             "unassigned_weight_asc", "unassigned_weight_desc"
@@ -25,7 +23,7 @@ class TurkeyManager:
         self.turkey_sort_index = 0
         self.order_sort_index = 0
 
-        # --- Create input fields ---
+        # --- Input fields ---
         self.tid_input = ft.TextField(label="Turkey ID", width=100)
         self.weight_input = ft.TextField(label="Weight", width=100)
 
@@ -44,56 +42,41 @@ class TurkeyManager:
             value="None"
         )
 
-        # --- Create buttons ---
-        self.add_turkey_btn = ft.ElevatedButton(
-            "Add Turkey",
-            on_click=lambda e: self.add_turkey_from_inputs()
-        )
-        self.delete_turkey_btn = ft.ElevatedButton(
-            "Delete Selected Turkey",
-            on_click=lambda e: self.delete_selected_turkey()
-        )
-        self.auto_match_btn = ft.ElevatedButton(
-            "Auto Match",
-            on_click=lambda e: self.auto_match()
+        #avg displacement
+        self.avg_disp_field = ft.TextField(label="Avg Displacement:", width=150, disabled=True, value="0.00")
+
+        # --- Buttons ---
+        self.add_turkey_btn = ft.ElevatedButton("Add Turkey", on_click=lambda e: self.add_turkey_from_inputs())
+        self.delete_turkey_btn = ft.ElevatedButton("Delete Selected Turkey", on_click=lambda e: self.delete_selected_turkey())
+        self.auto_match_btn = ft.ElevatedButton("Auto Match", on_click=lambda e: self.auto_match())
+        self.tune_orders_btn =ft.ElevatedButton("Tune", on_click=lambda e: self.tune_orders())
+        self.add_order_btn = ft.ElevatedButton("Add Order", on_click=lambda e: self.add_order_from_inputs())
+        self.delete_order_btn = ft.ElevatedButton("Delete Selected Order", on_click=lambda e: self.delete_selected_order())
+        self.match_btn = ft.ElevatedButton("Match Selected Order & Turkey", on_click=lambda e: self.match_selected())
+        self.match_closest_btn = ft.ElevatedButton("Find Closest Turkey to Order",on_click=lambda e: self.match_selected_closest())
+        self.unmatch_turkey_btn = ft.ElevatedButton("Unmatch Selected Turkey", on_click=lambda e: self.unmatch_selected_turkey())
+        self.unmatch_order_btn = ft.ElevatedButton("Unmatch Selected Order", on_click=lambda e: self.unmatch_selected_order())
+
+        self.make_pdfs_btn = ft.ElevatedButton("Generate PDFs", on_click=lambda e: self.make_pdf())
+        self.save_btn = ft.ElevatedButton(
+            text="Save",
+            on_click=lambda e: self.backend.save("turkey_save.pkl")
         )
 
-        self.add_order_btn = ft.ElevatedButton(
-            "Add Order",
-            on_click=lambda e: self.add_order_from_inputs()
+        self.recall_save_btn = ft.ElevatedButton(
+            text="Load",
+            on_click=lambda e: (self.backend.load("turkey_save.pkl"), self.refresh())
         )
-        self.delete_order_btn = ft.ElevatedButton(
-            "Delete Selected Order",
-            on_click=lambda e: self.delete_selected_order()
-        )
-        self.match_btn = ft.ElevatedButton(
-            "Match Selected Order & Turkey",
-            on_click=lambda e: self.match_selected()
-        )
-        self.unmatch_turkey_btn = ft.ElevatedButton(
-            "Unmatch Selected Turkey",
-            on_click=lambda e: self.unmatch_selected_turkey()
-        )
-        self.unmatch_order_btn = ft.ElevatedButton(
-            "Unmatch Selected Order",
-            on_click=lambda e: self.unmatch_selected_order()
-        )
-        # Button to generate all PDFs
-        self.make_pdfs_btn = ft.ElevatedButton(
-            text="Generate PDFs",
-            on_click=lambda e: self.make_pdf()
-        )
-        # Turkey inputs: Enter moves focus from TID -> Weight, then adds turkey
+
+        # --- Input field behavior ---
         self.tid_input.on_submit = lambda e: self.weight_input.focus()
         self.weight_input.on_submit = lambda e: self.add_turkey_from_inputs()
-
-        # Order inputs: cycle through fields, last one triggers add_order
         self.oid_input.on_submit = lambda e: self.order_name_input.focus()
         self.order_name_input.on_submit = lambda e: self.target_weight_input.focus()
         self.target_weight_input.on_submit = lambda e: self.notes_input.focus()
         self.notes_input.on_submit = lambda e: self.add_order_from_inputs()
 
-    # --- Logic functions ---
+    # --- Selection functions ---
     def select_turkey(self, tid):
         self.selected_turkey = tid
         self.refresh()
@@ -102,6 +85,7 @@ class TurkeyManager:
         self.selected_order = oid
         self.refresh()
 
+    # --- Add items ---
     def add_turkey_from_inputs(self):
         try:
             tid = int(self.tid_input.value)
@@ -140,6 +124,7 @@ class TurkeyManager:
         self.ham_radio_group.update()
         self.refresh()
 
+    # --- Delete items ---
     def delete_selected_turkey(self):
         if self.selected_turkey is not None:
             self.backend.remove_turkey(self.selected_turkey)
@@ -152,6 +137,7 @@ class TurkeyManager:
             self.selected_order = None
             self.refresh()
 
+    # --- Match / Unmatch ---
     def match_selected(self):
         if self.selected_order and self.selected_turkey:
             try:
@@ -159,6 +145,30 @@ class TurkeyManager:
             except ValueError as ve:
                 print(ve)
             self.refresh()
+    #
+    def update_avg_displacement(self):
+        # Get assigned orders
+        assigned_orders = self.backend.orders.dropna(subset=["assigned_tid"])
+
+        # Compute average displacement
+        avg_disp = assigned_orders["displacement"].abs().mean() if not assigned_orders.empty else 0.0
+
+        # Update the text field
+        self.avg_disp_field.value = f"{avg_disp:.2f}"
+
+        self.avg_disp_field.update()
+
+
+    def match_selected_closest(self):
+        if self.selected_order is None:
+            print("No order selected!")
+            return
+
+        try:
+            self.backend.match_closest(self.selected_order)
+        except ValueError as err:
+            print(err)
+        self.refresh()
 
     def unmatch_selected_turkey(self):
         if self.selected_turkey:
@@ -172,15 +182,25 @@ class TurkeyManager:
 
     def auto_match(self):
         try:
+            self.backend.plot_smoothed_distribution()
             self.backend.auto_match()
         except ValueError as ve:
             print(ve)
         self.refresh()
 
+    def tune_orders(self):
+        try:
+            self.backend.plot_smoothed_distribution()
+            self.backend.auto_match_by_bin()
+        except ValueError as ve:
+            print(ve)
+        self.refresh()
+    # --- PDF export ---
     def make_pdf(self):
         self.backend.export_turkey_orders_pdf()
         self.backend.export_ham_orders_without_turkey()
         self.backend.export_free_turkeys_pdf()
+
     # --- Sorting ---
     def cycle_turkey_sort(self):
         self.turkey_sort_index = (self.turkey_sort_index + 1) % len(self.turkey_sort_modes)
@@ -190,25 +210,39 @@ class TurkeyManager:
         self.order_sort_index = (self.order_sort_index + 1) % len(self.order_sort_modes)
         self.refresh()
 
+
     # --- Get sorted data ---
     def get_sorted_turkeys(self):
         df = self.backend.turkeys.copy()
         mode = self.turkey_sort_modes[self.turkey_sort_index]
-        if mode == "tid_asc": df = df.sort_values("tid")
-        elif mode == "tid_desc": df = df.sort_values("tid", ascending=False)
-        elif mode == "weight_asc": df = df.sort_values("weight")
-        elif mode == "weight_desc": df = df.sort_values("weight", ascending=False)
-        elif mode == "unassigned_weight_asc": df = df[df["assigned"] == False].sort_values("weight")
-        elif mode == "unassigned_weight_desc": df = df[df["assigned"] == False].sort_values("weight", ascending=False)
+        if mode == "tid_asc":
+            df = df.sort_values("tid")
+        elif mode == "tid_desc":
+            df = df.sort_values("tid", ascending=False)
+        elif mode == "weight_asc":
+            df = df.sort_values("weight")
+        elif mode == "weight_desc":
+            df = df.sort_values("weight", ascending=False)
+        elif mode == "unassigned_weight_asc":
+            df = df[df["assigned"] == False].sort_values("weight")
+        elif mode == "unassigned_weight_desc":
+            df = df[df["assigned"] == False].sort_values("weight", ascending=False)
         return df
 
     def get_sorted_orders(self):
         df = self.backend.orders.copy()
         mode = self.order_sort_modes[self.order_sort_index]
-        if mode == "oid_asc": df = df.sort_values("oid")
-        elif mode == "oid_desc": df = df.sort_values("oid", ascending=False)
-        elif mode == "target_weight_asc": df = df.sort_values("target_weight")
-        elif mode == "target_weight_desc": df = df.sort_values("target_weight", ascending=False)
-        elif mode == "unassigned_weight_asc": df = df[df["assigned_tid"].isna()].sort_values("target_weight")
-        elif mode == "unassigned_weight_desc": df = df[df["assigned_tid"].isna()].sort_values("target_weight", ascending=False)
+        if mode == "oid_asc":
+            df = df.sort_values("oid")
+        elif mode == "oid_desc":
+            df = df.sort_values("oid", ascending=False)
+        elif mode == "target_weight_asc":
+            df = df.sort_values("target_weight")
+        elif mode == "target_weight_desc":
+            df = df.sort_values("target_weight", ascending=False)
+        elif mode == "unassigned_weight_asc":
+            df = df[df["assigned_tid"].isna()].sort_values("target_weight")
+        elif mode == "unassigned_weight_desc":
+            df = df[df["assigned_tid"].isna()].sort_values("target_weight", ascending=False)
         return df
+
