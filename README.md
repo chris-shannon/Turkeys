@@ -13,9 +13,8 @@
   - Export matched data to a printable PDF                                                                                                                                                                                                                              
   - Save and load sessions from the data folder
                                    
-   ![App Screenshot](./assets/appscreenshot.png) 
-   
-   ![PDF](./assets/pdf.png)
+   <img src="./assets/appscreenshot.png" width="500">                                                                                                                                                                                                                         
+  <img src="./assets/pdf.png" width="400">    
    
   ## Matching Algorithms                                                                                                                                                                                                                                                     
                        
